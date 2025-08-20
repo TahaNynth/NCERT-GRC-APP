@@ -113,13 +113,14 @@ function Clauses() {
 }
 function AddClause() {
   const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
   const [success, setSuccess] = useState(false);
   const handleSubmit = e => {
     e.preventDefault();
     fetch(`${API_BASE}/clauses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, title })
     })
       .then(res => res.json())
       .then(() => setSuccess(true));
@@ -129,6 +130,7 @@ function AddClause() {
       <Typography variant="h5">Add Clause</Typography>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
         <TextField label="Clause Name" value={name} onChange={e => setName(e.target.value)} fullWidth required sx={{ mb: 2 }} />
+        <TextField label="Clause Title" value={title} onChange={e => setTitle(e.target.value)} fullWidth required sx={{ mb: 2 }} />
         <Button type="submit" variant="contained">Add</Button>
         {success && <Typography color="success.main" sx={{ mt: 2 }}>Clause added successfully!</Typography>}
       </Box>
@@ -137,6 +139,7 @@ function AddClause() {
 }
 function AddQuestion() {
   const [text, setText] = useState('');
+  const [title, setTitle] = useState('');
   const [clauseId, setClauseId] = useState('');
   const [clauses, setClauses] = useState([]);
   const [success, setSuccess] = useState(false);
@@ -150,7 +153,7 @@ function AddQuestion() {
     fetch(`${API_BASE}/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, clause_id: Number(clauseId) })
+      body: JSON.stringify({ text, title, clause_id: Number(clauseId) })
     })
       .then(res => res.json())
       .then(() => setSuccess(true));
@@ -159,11 +162,12 @@ function AddQuestion() {
     <Box p={3}>
       <Typography variant="h5">Add Question</Typography>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
-        <TextField label="Question" value={text} onChange={e => setText(e.target.value)} fullWidth required sx={{ mb: 2 }} />
+        <TextField label="Question Text" value={text} onChange={e => setText(e.target.value)} fullWidth required sx={{ mb: 2 }} />
+        <TextField label="Question Title" value={title} onChange={e => setTitle(e.target.value)} fullWidth required sx={{ mb: 2 }} />
         <TextField label="Clause" select value={clauseId} onChange={e => setClauseId(e.target.value)} fullWidth required sx={{ mb: 2 }} SelectProps={{ native: true }}>
           <option value=""></option>
           {clauses.map(clause => (
-            <option key={clause.id} value={clause.id}>{clause.name}</option>
+            <option key={clause.id} value={clause.id}>{clause.title || clause.name}</option>
           ))}
         </TextField>
         <Button type="submit" variant="contained">Add</Button>
@@ -174,41 +178,94 @@ function AddQuestion() {
 }
 function Responses() {
   const [orgs, setOrgs] = useState([]);
+  const [clauses, setClauses] = useState([]);
+  const [questions, setQuestions] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState('');
   const [responses, setResponses] = useState([]);
+
   useEffect(() => {
     fetch(`${API_BASE}/organizations`).then(res => res.json()).then(setOrgs);
+    fetch(`${API_BASE}/clauses`).then(res => res.json()).then(setClauses);
+    fetch(`${API_BASE}/questions`).then(res => res.json()).then(setQuestions);
   }, []);
+
   const handleShow = () => {
+    if (!selectedOrg) return;
     fetch(`${API_BASE}/responses?organization_id=${selectedOrg}`)
       .then(res => res.json())
       .then(setResponses);
   };
+
+  // Helper to get readable names
+  const getClauseName = id => clauses.find(c => c.id === id)?.name || id;
+  const getQuestionText = id => questions.find(q => q.id === id)?.text || id;
+
+  // Helper for color-coded answers
+  const renderResponse = text => {
+    if (!text || typeof text !== 'string') {
+      return <Typography sx={{ color: 'grey.600', fontStyle: 'italic' }}>No response</Typography>;
+    }
+
+    const lower = text.trim().toLowerCase();
+    if (lower === 'yes') {
+      return <Typography sx={{ color: 'green', fontWeight: 'bold' }}>Yes</Typography>;
+    }
+    if (lower === 'no') {
+      return <Typography sx={{ color: 'red', fontWeight: 'bold' }}>No</Typography>;
+    }
+    if (lower === 'not applicable') {
+      return <Typography sx={{ color: 'orange', fontWeight: 'bold' }}>Not Applicable</Typography>;
+    }
+    return text;
+  };
+
+
   return (
     <Box p={3}>
       <Typography variant="h5">Show Responses</Typography>
-      <TextField label="Select Organization" select value={selectedOrg} onChange={e => setSelectedOrg(e.target.value)} fullWidth sx={{ mt: 2 }} SelectProps={{ native: true }}>
+      <TextField
+        label="Select Organization"
+        select
+        value={selectedOrg}
+        onChange={e => setSelectedOrg(e.target.value)}
+        fullWidth
+        sx={{ mt: 2 }}
+        SelectProps={{ native: true }}
+      >
         <option value=""></option>
-        {orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
+        {orgs.map(org => (
+          <option key={org.id} value={org.id}>
+            {org.name}
+          </option>
+        ))}
       </TextField>
-      <Button variant="contained" sx={{ mt: 2 }} onClick={handleShow}>Show Response</Button>
+
+      <Button
+        variant="contained"
+        sx={{ mt: 2 }}
+        onClick={handleShow}
+        disabled={!selectedOrg}
+      >
+        Show Responses
+      </Button>
+
       {responses.length > 0 && (
-        <TableContainer component={Paper} sx={{ mt: 2 }}>
+        <TableContainer component={Paper} sx={{ mt: 3 }}>
           <Table>
-            <TableHead>
+            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell>Clause</TableCell>
-                <TableCell>Question</TableCell>
-                <TableCell>Response</TableCell>
-                <TableCell>Date</TableCell>
+                <TableCell><b>Clause</b></TableCell>
+                <TableCell><b>Question</b></TableCell>
+                <TableCell><b>Response</b></TableCell>
+                <TableCell><b>Date</b></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {responses.map((resp, idx) => (
                 <TableRow key={idx}>
-                  <TableCell>{resp.clause_id}</TableCell>
-                  <TableCell>{resp.question_id}</TableCell>
-                  <TableCell>{resp.response_text}</TableCell>
+                  <TableCell>{getClauseName(resp.clause_id)}</TableCell>
+                  <TableCell>{getQuestionText(resp.question_id)}</TableCell>
+                  <TableCell>{renderResponse(resp.response_type)}</TableCell>
                   <TableCell>{resp.date}</TableCell>
                 </TableRow>
               ))}
@@ -219,6 +276,7 @@ function Responses() {
     </Box>
   );
 }
+
 function AddResponse() {
   const [orgs, setOrgs] = useState([]);
   const [clauses, setClauses] = useState([]);
@@ -226,14 +284,17 @@ function AddResponse() {
   const [selectedOrg, setSelectedOrg] = useState('');
   const [selectedClause, setSelectedClause] = useState('');
   const [selectedQuestion, setSelectedQuestion] = useState('');
-  const [responseText, setResponseText] = useState('');
+  const [responseType, setResponseType] = useState('');
+  const [comment, setComment] = useState('');
   const [date, setDate] = useState('');
   const [success, setSuccess] = useState(false);
+  
   useEffect(() => {
     fetch(`${API_BASE}/organizations`).then(res => res.json()).then(setOrgs);
     fetch(`${API_BASE}/clauses`).then(res => res.json()).then(setClauses);
     fetch(`${API_BASE}/questions`).then(res => res.json()).then(setQuestions);
   }, []);
+  
   const handleSubmit = e => {
     e.preventDefault();
     fetch(`${API_BASE}/responses`, {
@@ -243,30 +304,120 @@ function AddResponse() {
         organization_id: Number(selectedOrg),
         clause_id: Number(selectedClause),
         question_id: Number(selectedQuestion),
-        response_text: responseText,
+        response_type: responseType,
+        comment: comment,
         date
       })
     }).then(res => res.json()).then(() => setSuccess(true));
   };
+  
   return (
     <Box p={3}>
       <Typography variant="h5">Add Response</Typography>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
-        <TextField label="Organization" select value={selectedOrg} onChange={e => setSelectedOrg(e.target.value)} fullWidth required sx={{ mb: 2 }} SelectProps={{ native: true }}>
+        <TextField 
+          label="Organization" 
+          select 
+          value={selectedOrg} 
+          onChange={e => setSelectedOrg(e.target.value)} 
+          fullWidth 
+          required 
+          sx={{ mb: 2 }} 
+          SelectProps={{ native: true }}
+        >
           <option value=""></option>
           {orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
         </TextField>
-        <TextField label="Clause" select value={selectedClause} onChange={e => setSelectedClause(e.target.value)} fullWidth required sx={{ mb: 2 }} SelectProps={{ native: true }}>
+        
+        <TextField 
+          label="Clause" 
+          select 
+          value={selectedClause} 
+          onChange={e => setSelectedClause(e.target.value)} 
+          fullWidth 
+          required 
+          sx={{ mb: 2 }} 
+          SelectProps={{ native: true }}
+        >
           <option value=""></option>
-          {clauses.map(clause => <option key={clause.id} value={clause.id}>{clause.name}</option>)}
+          {clauses.map(clause => <option key={clause.id} value={clause.id}>{clause.title || clause.name}</option>)}
         </TextField>
-        <TextField label="Question" select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} fullWidth required sx={{ mb: 2 }} SelectProps={{ native: true }}>
+        
+        <TextField 
+          label="Question" 
+          select 
+          value={selectedQuestion} 
+          onChange={e => setSelectedQuestion(e.target.value)} 
+          fullWidth 
+          required 
+          sx={{ mb: 2 }} 
+          SelectProps={{ native: true }}
+        >
           <option value=""></option>
-          {questions.filter(q => q.clause_id === Number(selectedClause)).map(q => <option key={q.id} value={q.id}>{q.text}</option>)}
+          {questions.filter(q => q.clause_id === Number(selectedClause)).map(q => <option key={q.id} value={q.id}>{q.title || q.text}</option>)}
         </TextField>
-        <TextField label="Response" value={responseText} onChange={e => setResponseText(e.target.value)} fullWidth required sx={{ mb: 2 }} />
-        <TextField label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} fullWidth required sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-        <Button type="submit" variant="contained">Add</Button>
+        
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>Response Type *</Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="radio"
+                name="responseType"
+                value="Yes"
+                checked={responseType === 'Yes'}
+                onChange={(e) => setResponseType(e.target.value)}
+                required
+              />
+              <Typography>Yes</Typography>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="radio"
+                name="responseType"
+                value="No"
+                checked={responseType === 'No'}
+                onChange={(e) => setResponseType(e.target.value)}
+                required
+              />
+              <Typography>No</Typography>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="radio"
+                name="responseType"
+                value="Not applicable"
+                checked={responseType === 'Not applicable'}
+                onChange={(e) => setResponseType(e.target.value)}
+                required
+              />
+              <Typography>Not applicable</Typography>
+            </label>
+          </Box>
+        </Box>
+        
+        <TextField 
+          label="Comment (Optional)" 
+          value={comment} 
+          onChange={e => setComment(e.target.value)} 
+          fullWidth 
+          multiline
+          rows={3}
+          sx={{ mb: 2 }} 
+        />
+        
+        <TextField 
+          label="Date" 
+          type="date" 
+          value={date} 
+          onChange={e => setDate(e.target.value)} 
+          fullWidth 
+          required 
+          sx={{ mb: 2 }} 
+          InputLabelProps={{ shrink: true }} 
+        />
+        
+        <Button type="submit" variant="contained">Add Response</Button>
         {success && <Typography color="success.main" sx={{ mt: 2 }}>Response added successfully!</Typography>}
       </Box>
     </Box>
@@ -280,90 +431,7 @@ function EditResponse() {
     </Box>
   );
 }
-function Comparison() {
-  const [orgs, setOrgs] = useState([]);
-  const [clauses, setClauses] = useState([]);
-  const [selectedOrgs, setSelectedOrgs] = useState([]);
-  const [selectedClause, setSelectedClause] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [results, setResults] = useState([]);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    fetch(`${API_BASE}/organizations`).then(res => res.json()).then(setOrgs);
-    fetch(`${API_BASE}/clauses`).then(res => res.json()).then(setClauses);
-  }, []);
-  const handleCompare = () => {
-    setError('');
-    if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
-      setError('End date must be after start date');
-      setResults([]);
-      return;
-    }
-    const params = new URLSearchParams();
-    selectedOrgs.forEach(id => params.append('organization_ids', id));
-    if (selectedClause) params.append('clause_id', selectedClause);
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    fetch(`${API_BASE}/compare?${params.toString()}`)
-      .then(async res => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.detail || `Request failed (${res.status})`);
-        }
-        return res.json();
-      })
-      .then(data => Array.isArray(data) ? setResults(data) : setResults([]))
-      .catch(err => { setError(err.message); setResults([]); });
-  };
-  const chartData = Array.isArray(results) ? (() => {
-    const data = [];
-    const questions = [...new Set(results.map(r => r.question_id))];
-    questions.forEach(qid => {
-      const entry = { question_id: qid };
-      results.filter(r => r.question_id === qid).forEach(r => {
-        entry[`org_${r.organization_id}`] = r.response_text;
-      });
-      data.push(entry);
-    });
-    return data;
-  })() : [];
-  return (
-    <Box p={3}>
-      <Typography variant="h5">Comparison</Typography>
-      <Box sx={{ mt: 2 }}>
-        <TextField label="Select Organizations" select value={selectedOrgs} onChange={e => setSelectedOrgs(Array.from(e.target.selectedOptions, o => o.value))} fullWidth SelectProps={{ multiple: true, native: true }} sx={{ mb: 2 }}>
-          {orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
-        </TextField>
-        <TextField label="Clause" select value={selectedClause} onChange={e => setSelectedClause(e.target.value)} fullWidth sx={{ mb: 2 }} SelectProps={{ native: true }}>
-          <option value=""></option>
-          {clauses.map(clause => <option key={clause.id} value={clause.id}>{clause.name}</option>)}
-        </TextField>
-        <TextField label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} fullWidth sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-        <TextField label="End Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} fullWidth sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-        <Button variant="contained" onClick={handleCompare}>Compare</Button>
-      </Box>
-      {error && <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>}
-      {chartData.length > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h6">Comparison Chart</Typography>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="question_id" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {selectedOrgs.map(orgId => (
-                <Line key={orgId} type="monotone" dataKey={`org_${orgId}`} name={orgs.find(o => o.id === Number(orgId))?.name || orgId} stroke="#8884d8" />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-      )}
-    </Box>
-  );
-}
+
 
 const drawerWidth = 250;
 

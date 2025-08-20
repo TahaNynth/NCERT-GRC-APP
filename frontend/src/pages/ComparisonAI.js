@@ -1,228 +1,432 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Grid, Card, CardHeader, CardContent, Typography, TextField, Button, Divider, Alert } from '@mui/material';
-import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from 'recharts';
-import { API_BASE } from '../api';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  CircularProgress,
+  Alert,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  Grid,
+} from '@mui/material';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import {
+  getOrganizations,
+  getClauses,
+  compareSurveys,
+  aiCompareSurveys,
+  getYesNoChartData,
+  getYesNoComparisonChartData,
+} from '../api';
 
-export default function ComparisonAI() {
-  const [orgs, setOrgs] = useState([]);
+function ComparisonAI() {
+  const [organizations, setOrganizations] = useState([]);
   const [clauses, setClauses] = useState([]);
-  const [org1, setOrg1] = useState('');
-  const [org2, setOrg2] = useState('');
-  const [clauseId, setClauseId] = useState('');
+  const [selectedOrg1, setSelectedOrg1] = useState('');
+  const [selectedOrg2, setSelectedOrg2] = useState('');
+  const [selectedClause, setSelectedClause] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [ai, setAi] = useState({ similarities: [], differences: [], summary: '' });
-  const [error, setError] = useState('');
+  const [aiResults, setAiResults] = useState(null);
+  const [chartResults, setChartResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [numericResults, setNumericResults] = useState([]);
+  const [error, setError] = useState('');
+  const [yesNoChartData, setYesNoChartData] = useState([]);
+  const [showYesNoChart, setShowYesNoChart] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [comparisonYesNoData, setComparisonYesNoData] = useState([]);
+  const [showComparisonChart, setShowComparisonChart] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_BASE}/organizations`).then(r => r.json()).then(setOrgs);
-    fetch(`${API_BASE}/clauses`).then(r => r.json()).then(setClauses);
+    fetchOrganizations();
+    fetchClauses();
   }, []);
 
-  const selectedOrg1 = useMemo(() => orgs.find(o => o.id === Number(org1)), [orgs, org1]);
-  const selectedOrg2 = useMemo(() => orgs.find(o => o.id === Number(org2)), [orgs, org2]);
-
-  const normalizeList = (val) => {
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'string') {
-      return val
-        .split(/\r?\n|•|\-|\d+\.|\*/)
-        .map(s => s.trim())
-        .filter(Boolean);
+  const fetchOrganizations = async () => {
+    try {
+      const data = await getOrganizations();
+      setOrganizations(data);
+    } catch {
+      setError('Failed to fetch organizations');
     }
-    return [];
+  };
+
+  const fetchClauses = async () => {
+    try {
+      const data = await getClauses();
+      setClauses(data);
+    } catch {
+      setError('Failed to fetch clauses');
+    }
   };
 
   const handleCompare = async () => {
-    setError('');
-    setAi({ similarities: [], differences: [], summary: '' });
-    setNumericResults([]);
-    if (!org1 || !org2) { setError('Please select two organizations.'); return; }
-    if (org1 === org2) { setError('Please select two different organizations.'); return; }
-    if (startDate && endDate && new Date(endDate) < new Date(startDate)) { setError('End date must be after start date'); return; }
+    if (!selectedOrg1 || !selectedOrg2) {
+      setError('Please select two organizations');
+      return;
+    }
 
-    const params = new URLSearchParams();
-    params.set('org1_id', org1); params.set('org2_id', org2);
-    if (clauseId) params.set('clause_id', clauseId);
-    if (startDate) params.set('start_date', startDate);
-    if (endDate) params.set('end_date', endDate);
-
-    const numParams = new URLSearchParams();
-    [org1, org2].forEach(id => numParams.append('organization_ids', id));
-    if (clauseId) numParams.set('clause_id', clauseId);
-    if (startDate) numParams.set('start_date', startDate);
-    if (endDate) numParams.set('end_date', endDate);
+    if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+      setError('End date must be after start date');
+      return;
+    }
 
     setLoading(true);
-    try {
-      const [aiRes, numRes] = await Promise.all([
-        fetch(`${API_BASE}/ai/compare?${params.toString()}`),
-        fetch(`${API_BASE}/compare?${numParams.toString()}`)
-      ]);
-      if (!aiRes.ok) {
-        const d = await aiRes.json().catch(() => ({}));
-        throw new Error(d.detail || 'AI compare failed');
-      }
-      const aiJson = await aiRes.json();
-      setAi({
-        similarities: normalizeList(aiJson.similarities),
-        differences: normalizeList(aiJson.differences),
-        summary: typeof aiJson.summary === 'string' ? aiJson.summary : ''
-      });
+    setError('');
+    setShowComparisonChart(false);
 
-      const data = await numRes.json().catch(() => []);
-      setNumericResults(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e.message);
+    try {
+      console.log('Fetching comparison for:', { selectedOrg1, selectedOrg2, selectedClause, startDate, endDate });
+      const aiResponse = await aiCompareSurveys(selectedOrg1, selectedOrg2, selectedClause, startDate, endDate);
+      setAiResults(aiResponse);
+
+      const chartResponse = await compareSurveys(
+        [selectedOrg1, selectedOrg2],
+        selectedClause,
+        startDate,
+        endDate
+      );
+      setChartResults(Array.isArray(chartResponse) ? chartResponse : []);
+
+      const comparisonData = await getYesNoComparisonChartData(selectedOrg1, selectedOrg2, selectedClause, startDate, endDate);
+      console.log('Comparison data received:', comparisonData);
+      if (comparisonData && comparisonData.length > 0) {
+        setComparisonYesNoData(comparisonData);
+        setShowComparisonChart(true);
+      } else {
+        setError('No response data available. Please add some responses first.');
+        setShowComparisonChart(false);
+      }
+    } catch (err) {
+      console.error('Error in handleCompare:', err);
+      setError(err.message || 'Failed to fetch comparison data.');
     } finally {
       setLoading(false);
     }
   };
 
-  const chartData = useMemo(() => {
-    const data = [];
-    const questions = [...new Set(numericResults.map(r => r.question_id))];
-    questions.forEach(qid => {
-      const entry = { question_id: qid };
-      numericResults.filter(r => r.question_id === qid).forEach(r => {
-        entry[`org_${r.organization_id}`] = r.response_text;
-      });
-      data.push(entry);
-    });
-    return data;
-  }, [numericResults]);
+  const generateYesNoChart = async () => {
+    setChartLoading(true);
+    setError('');
+    try {
+      console.log('Fetching Yes/No chart data...');
+      const data = await getYesNoChartData();
+      console.log('Yes/No data received:', data);
+      if (data && data.length > 0) {
+        setYesNoChartData(data);
+        setShowYesNoChart(true);
+      } else {
+        setError('No response data available. Please add some responses first.');
+        setShowYesNoChart(false);
+      }
+    } catch (err) {
+      console.error('Error fetching Yes/No chart data:', err);
+      setError('Failed to fetch chart data: ' + err.message);
+      setShowYesNoChart(false);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
+  const COLORS = ['#4caf50', '#f44336', '#ffeb3b', '#ffc658']; // Yes, No, Not applicable, No Response
+
+  const org1Name = organizations.find(org => org.id === Number(selectedOrg1))?.name || 'Org 1';
+  const org2Name = organizations.find(org => org.id === Number(selectedOrg2))?.name || 'Org 2';
 
   return (
     <Box p={3}>
-      <Typography variant="h5" sx={{ mb: 2 }}>Comparison</Typography>
+      <Typography variant="h4" gutterBottom>
+        AI-Powered Survey Comparison
+      </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {/* Controls */}
+      <Card sx={{ mb: 3, p: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={3}>
+            <TextField
+              select
+              fullWidth
+              label="Organization 1"
+              value={selectedOrg1}
+              onChange={(e) => setSelectedOrg1(e.target.value)}
+              SelectProps={{ native: true }}
+            >
+              <option value="">Select...</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField
+              select
+              fullWidth
+              label="Organization 2"
+              value={selectedOrg2}
+              onChange={(e) => setSelectedOrg2(e.target.value)}
+              SelectProps={{ native: true }}
+            >
+              <option value="">Select...</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              select
+              fullWidth
+              label="Clause (Optional)"
+              value={selectedClause}
+              onChange={(e) => setSelectedClause(e.target.value)}
+              SelectProps={{ native: true }}
+            >
+              <option value="">All Clauses</option>
+              {clauses.map((clause) => (
+                <option key={clause.id} value={clause.id}>
+                  {clause.title || clause.name}
+                </option>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              type="date"
+              fullWidth
+              label="Start Date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              type="date"
+              fullWidth
+              label="End Date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+        </Grid>
+        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            onClick={handleCompare}
+            disabled={loading || !selectedOrg1 || !selectedOrg2}
+          >
+            {loading ? <CircularProgress size={20} /> : 'Compare Organizations'}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={generateYesNoChart}
+            color="secondary"
+            disabled={chartLoading}
+          >
+            {chartLoading ? <CircularProgress size={20} /> : 'Generate Yes/No Chart'}
+          </Button>
+        </Box>
+      </Card>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader title="Organization 1" subheader="Select an organization to compare." />
-            <CardContent>
-              <TextField label="Select Organization" select fullWidth value={org1} onChange={e => setOrg1(e.target.value)} SelectProps={{ native: true }} sx={{ mb: 2 }}>
-                <option value=""></option>
-                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </TextField>
-              {selectedOrg1 && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>Key Details:</Typography>
-                  <Typography variant="body2">Year: {selectedOrg1.year_of_association}</Typography>
-                  <Typography variant="body2">Details: {selectedOrg1.details || '-'}</Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader title="Organization 2" subheader="Select another organization to compare." />
-            <CardContent>
-              <TextField label="Select Organization" select fullWidth value={org2} onChange={e => setOrg2(e.target.value)} SelectProps={{ native: true }} sx={{ mb: 2 }}>
-                <option value=""></option>
-                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </TextField>
-              {selectedOrg2 && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>Key Details:</Typography>
-                  <Typography variant="body2">Year: {selectedOrg2.year_of_association}</Typography>
-                  <Typography variant="body2">Details: {selectedOrg2.details || '-'}</Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <TextField label="Clause" select fullWidth value={clauseId} onChange={e => setClauseId(e.target.value)} SelectProps={{ native: true }}>
-                    <option value=""></option>
-                    {clauses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <TextField label="Start Date" type="date" fullWidth value={startDate} onChange={e => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <TextField label="End Date" type="date" fullWidth value={endDate} onChange={e => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-                </Grid>
-                <Grid item xs={12}>
-                  <Button variant="contained" onClick={handleCompare} disabled={loading}>{loading ? 'Comparing...' : 'Compare'}</Button>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
+      {/* AI Results */}
+      {aiResults && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Card raised>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  AI Summary
+                </Typography>
+                <Typography variant="body1">{aiResults.summary}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card raised>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Similarities
+                </Typography>
+                <List dense>
+                  {aiResults.similarities?.length > 0 ? (
+                    aiResults.similarities.map((item, index) => (
+                      <ListItem key={index}>
+                        <ListItemText primary={`• ${item}`} />
+                      </ListItem>
+                    ))
+                  ) : (
+                    <ListItem>
+                      <ListItemText primary="No specific similarities identified." />
+                    </ListItem>
+                  )}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card raised>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Differences
+                </Typography>
+                <List dense>
+                  {aiResults.differences?.length > 0 ? (
+                    aiResults.differences.map((item, index) => (
+                      <ListItem key={index}>
+                        <ListItemText primary={`• ${item}`} />
+                      </ListItem>
+                    ))
+                  ) : (
+                    <ListItem>
+                      <ListItemText primary="No specific differences identified." />
+                    </ListItem>
+                  )}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
+      )}
 
-        <Grid item xs={12}>
-          <Card>
-            <CardHeader title="Summary" />
-            <CardContent>
-              {ai.summary ? (
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{ai.summary}</Typography>
-              ) : (
-                <Typography variant="body2" color="text.secondary">Run a comparison to generate an AI summary.</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+      {/* Yes/No/Not applicable Chart */}
+      {showYesNoChart && yesNoChartData.length > 0 && (
+        <Card sx={{ mb: 4 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ mb: 3, color: '#1976d2', fontWeight: 600 }}>
+              📊 Yes/No/Not applicable Response Comparison (All Organizations)
+            </Typography>
+            <Box sx={{ height: 600, width: '100%' }}>
+              <ResponsiveContainer>
+                <BarChart
+                  data={yesNoChartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 120 }}
+                  barGap={4}
+                  barCategoryGap="30%"
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis
+                    dataKey="name"
+                    angle={-45}
+                    textAnchor="end"
+                    height={120}
+                    interval={0}
+                    tick={{ fontSize: 11, fill: '#666' }}
+                    tickLine={false}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#666' }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #ccc',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    }}
+                    formatter={(value, name) => [`${value} responses`, name]}
+                    labelStyle={{ fontWeight: 'bold', color: '#1976d2' }}
+                  />
+                  <Legend verticalAlign="top" height={36} iconType="circle" iconSize={12} />
+                  <Bar dataKey="Yes" fill={COLORS[0]} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="No" fill={COLORS[1]} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Not applicable" fill={COLORS[2]} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
 
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader title="Similarities" />
-            <CardContent>
-              {ai.similarities && ai.similarities.length > 0 ? ai.similarities.map((s, i) => (
-                <Typography key={i} variant="body2" sx={{ mb: 0.5 }}>• {s}</Typography>
-              )) : <Typography variant="body2" color="text.secondary">No similarities found yet. Run a comparison.</Typography>}
-            </CardContent>
-          </Card>
-        </Grid>
+      {/* Yes/No/Not applicable/No Response Comparison Chart */}
+      {showComparisonChart && comparisonYesNoData.length > 0 && (
+        <Card sx={{ mb: 4 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ mb: 3, color: '#1976d2', fontWeight: 600 }}>
+              📊 Yes/No/Not applicable/No Response Comparison (Selected Organizations)
+            </Typography>
+            {comparisonYesNoData.length > 0 ? (
+              <Box sx={{ height: 400, width: '100%' }}>
+                <ResponsiveContainer>
+                  <BarChart
+                    data={comparisonYesNoData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#666' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#666' }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#fff',
+                        border: '1px solid #ccc',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      }}
+                      formatter={(value, name) => [
+                        `${value} responses`,
+                        name === org1Name ? org1Name : name === org2Name ? org2Name : name,
+                      ]}
+                      labelStyle={{ fontWeight: 'bold', color: '#1976d2' }}
+                    />
+                    <Legend verticalAlign="top" height={36} iconType="circle" iconSize={12} />
+                    <Bar dataKey={org1Name} fill={COLORS[0]} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey={org2Name} fill={COLORS[1]} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : (
+              <Alert severity="info">No data available for the selected comparison.</Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader title="Differences" />
-            <CardContent>
-              {ai.differences && ai.differences.length > 0 ? ai.differences.map((s, i) => (
-                <Typography key={i} variant="body2" sx={{ mb: 0.5 }}>• {s}</Typography>
-              )) : <Typography variant="body2" color="text.secondary">No differences found yet. Run a comparison.</Typography>}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Card>
-            <CardHeader title="Graphical Analysis" subheader="Interactive charts appear here." />
-            <CardContent>
-              {chartData.length > 0 ? (
-                <Box sx={{ height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="question_id" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      {[org1, org2].filter(Boolean).map(id => (
-                        <Line key={id} type="monotone" dataKey={`org_${id}`} name={orgs.find(o => o.id === Number(id))?.name || `Org ${id}`} stroke="#1976d2" />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary">Placeholder for interactive chart.</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {/* Line Chart */}
+      {chartResults.length > 0 && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Numerical Response Comparison
+            </Typography>
+            <Box sx={{ height: 400, width: '100%' }}>
+              <ResponsiveContainer>
+                <BarChart data={chartResults}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="org1_responses" fill="#8884d8" name="Organization 1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="org2_responses" fill="#82ca9d" name="Organization 2" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
     </Box>
   );
 }
+
+export default ComparisonAI;

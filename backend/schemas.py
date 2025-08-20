@@ -1,6 +1,11 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import date
+from enum import Enum
+
+class ResponseType(str, Enum):
+    YES = "Yes"
+    NO = "No"
 
 class OrganizationBase(BaseModel):
     name: str
@@ -16,6 +21,7 @@ class Organization(OrganizationBase):
 
 class ClauseBase(BaseModel):
     name: str
+    title: str
 
 class ClauseCreate(ClauseBase):
     pass
@@ -26,6 +32,7 @@ class Clause(ClauseBase):
 
 class QuestionBase(BaseModel):
     text: str
+    title: str
     clause_id: int
 
 class QuestionCreate(QuestionBase):
@@ -39,7 +46,8 @@ class ResponseBase(BaseModel):
     organization_id: int
     clause_id: int
     question_id: int
-    response_text: str
+    response_type: ResponseType
+    comment: Optional[str] = None
     date: date
 
 class ResponseCreate(ResponseBase):

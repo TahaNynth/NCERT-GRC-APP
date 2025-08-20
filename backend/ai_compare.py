@@ -69,7 +69,8 @@ def ai_compare(
             {
                 "clause_id": r.clause_id,
                 "question_id": r.question_id,
-                "response_text": r.response_text,
+                "response_type": r.response_type.value if r.response_type else None,
+                "comment": r.comment,
                 "date": str(r.date),
             }
             for r in responses

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Response, Organization, Clause, Question
-from typing import List, Optional
+from typing import List, Optional  # Added import for Optional
 from datetime import date
 
 router = APIRouter()
@@ -41,7 +41,8 @@ def compare_surveys(
             "organization_id": r.organization_id,
             "clause_id": r.clause_id,
             "question_id": r.question_id,
-            "response_text": r.response_text,
+            "response_type": r.response_type.value if r.response_type else None,
+            "comment": r.comment,
             "date": r.date
         } for r in results
     ]
