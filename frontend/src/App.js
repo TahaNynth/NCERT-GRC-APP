@@ -182,6 +182,10 @@ function Responses() {
   const [questions, setQuestions] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState('');
   const [responses, setResponses] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [editingRemarksId, setEditingRemarksId] = useState(null);
+  const [editRemarksValue, setEditRemarksValue] = useState('');
 
   useEffect(() => {
     fetch(`${API_BASE}/organizations`).then(res => res.json()).then(setOrgs);
@@ -196,12 +200,88 @@ function Responses() {
       .then(setResponses);
   };
 
+  const handleEdit = (response) => {
+    setEditingId(response.id);
+    setEditValue(response.response_type);
+  };
+
+  const handleEditRemarks = (response) => {
+    setEditingRemarksId(response.id);
+    setEditRemarksValue(response.comment || '');
+  };
+
+  const handleSave = async (responseId) => {
+    try {
+      const response = await fetch(`${API_BASE}/responses/${responseId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: selectedOrg,
+          clause_id: responses.find(r => r.id === responseId).clause_id,
+          question_id: responses.find(r => r.id === responseId).question_id,
+          response_type: editValue,
+          comment: responses.find(r => r.id === responseId).comment,
+          date: responses.find(r => r.id === responseId).date
+        })
+      });
+      
+      if (response.ok) {
+        // Update local state
+        setResponses(prev => prev.map(r => 
+          r.id === responseId ? { ...r, response_type: editValue } : r
+        ));
+        setEditingId(null);
+        setEditValue('');
+      }
+    } catch (error) {
+      console.error('Failed to update response:', error);
+    }
+  };
+
+  const handleSaveRemarks = async (responseId) => {
+    try {
+      const response = await fetch(`${API_BASE}/responses/${responseId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: selectedOrg,
+          clause_id: responses.find(r => r.id === responseId).clause_id,
+          question_id: responses.find(r => r.id === responseId).question_id,
+          response_type: responses.find(r => r.id === responseId).response_type,
+          comment: editRemarksValue,
+          date: responses.find(r => r.id === responseId).date
+        })
+      });
+      
+      if (response.ok) {
+        // Update local state
+        setResponses(prev => prev.map(r => 
+          r.id === responseId ? { ...r, comment: editRemarksValue } : r
+        ));
+        setEditingRemarksId(null);
+        setEditRemarksValue('');
+      }
+    } catch (error) {
+      console.error('Failed to update remarks:', error);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const handleCancelRemarks = () => {
+    setEditingRemarksId(null);
+    setEditRemarksValue('');
+  };
+
   // Helper to get readable names
   const getClauseName = id => clauses.find(c => c.id === id)?.name || id;
   const getQuestionText = id => questions.find(q => q.id === id)?.text || id;
 
   // Helper for color-coded answers
-  const renderResponse = text => {
+  const renderResponse = (text) => {
     if (!text || typeof text !== 'string') {
       return <Typography sx={{ color: 'grey.600', fontStyle: 'italic' }}>No response</Typography>;
     }
@@ -219,10 +299,114 @@ function Responses() {
     return text;
   };
 
+  // Render editable response cell
+  const renderEditableResponse = (response) => {
+    if (editingId === response.id) {
+      return (
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <TextField
+            select
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            size="small"
+            sx={{ minWidth: 120 }}
+            SelectProps={{ native: true }}
+          >
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+            <option value="Not applicable">Not Applicable</option>
+          </TextField>
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => handleSave(response.id)}
+            sx={{ minWidth: 60 }}
+          >
+            Save
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleCancel}
+            sx={{ minWidth: 60 }}
+          >
+            Cancel
+          </Button>
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        {renderResponse(response.response_type)}
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => handleEdit(response)}
+          sx={{ ml: 1 }}
+        >
+          Edit
+        </Button>
+      </Box>
+    );
+  };
+
+  // Render editable remarks cell
+  const renderEditableRemarks = (response) => {
+    if (editingRemarksId === response.id) {
+      return (
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <TextField
+            value={editRemarksValue}
+            onChange={(e) => setEditRemarksValue(e.target.value)}
+            size="small"
+            multiline
+            rows={2}
+            sx={{ minWidth: 200 }}
+            placeholder="Enter remarks..."
+          />
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={() => handleSaveRemarks(response.id)}
+            sx={{ minWidth: 60 }}
+          >
+            Save
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleCancelRemarks}
+            sx={{ minWidth: 60 }}
+          >
+            Cancel
+          </Button>
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Typography sx={{ flex: 1 }}>
+          {response.comment || 'No remarks'}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => handleEditRemarks(response)}
+          sx={{ ml: 1 }}
+        >
+          Edit
+        </Button>
+      </Box>
+    );
+  };
 
   return (
     <Box p={3}>
-      <Typography variant="h5">Show Responses</Typography>
+      
       <TextField
         label="Select Organization"
         select
@@ -257,7 +441,7 @@ function Responses() {
                 <TableCell><b>Clause</b></TableCell>
                 <TableCell><b>Question</b></TableCell>
                 <TableCell><b>Response</b></TableCell>
-                <TableCell><b>Date</b></TableCell>
+                <TableCell><b>Remarks</b></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -265,8 +449,8 @@ function Responses() {
                 <TableRow key={idx}>
                   <TableCell>{getClauseName(resp.clause_id)}</TableCell>
                   <TableCell>{getQuestionText(resp.question_id)}</TableCell>
-                  <TableCell>{renderResponse(resp.response_type)}</TableCell>
-                  <TableCell>{resp.date}</TableCell>
+                  <TableCell>{renderEditableResponse(resp)}</TableCell>
+                  <TableCell>{renderEditableRemarks(resp)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
