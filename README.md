@@ -1,21 +1,35 @@
 # NCERT-WEB-APP
 
-## Running the Application
+This project consists of two parts:
+- **Frontend** (React)
+- **Backend** (FastAPI)
 
-This project consists of two parts: **Frontend** (React) and **Backend** (FastAPI).
+Follow the steps below to run the application.
 
 ---
 
-### 🖥️ Frontend
-To start the frontend:
+## 🚀 How to Run
 
+```bash
+# -------------------------
+# Frontend
+# -------------------------
 cd frontend
 npm install   # only needed the first time
 npm start
 
-### 🖥️ Backend
-To start the backend:
 
+# -------------------------
+# Backend (Windows)
+# -------------------------
 cd backend
 .\venv\Scripts\activate
+uvicorn app:app --reload
+
+
+# -------------------------
+# Backend (Linux/Mac)
+# -------------------------
+cd backend
+source venv/bin/activate
 uvicorn app:app --reload
